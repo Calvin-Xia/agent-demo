@@ -1,4 +1,4 @@
-# multitemporal-rs-agent
+# multitemporal-rs-agent-demo
 
 面向多时相遥感影像分析的 Agent 实验仓库。
 
