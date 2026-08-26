@@ -1,7 +1,22 @@
+# Local task inputs
+codex-minimal-image-agent-demo-fix.md
+
+# uv environments and optional project-local cache
 .venv/
+.uv_cache/
+
+# Python bytecode and tool caches
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Python build artifacts
 build/
 dist/
 *.egg-info/
