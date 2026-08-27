@@ -55,3 +55,26 @@ def test_inspect_image_rejects_text_file(tmp_path: Path) -> None:
 
     with pytest.raises(ImageInspectionError, match="not a readable image"):
         inspect_image(text_path)
+
+
+def test_inspect_image_preserves_16bit_mean(tmp_path: Path) -> None:
+    image_path = tmp_path / "sixteen-bit.png"
+    with Image.new("I;16", (2, 1)) as image:
+        image.putdata([0, 65535])
+        image.save(image_path)
+
+    result = inspect_image(image_path)
+
+    assert result["statistics"] == {"I": {"min": 0, "max": 65535, "mean": 32767.5}}
+
+
+def test_inspect_image_rejects_decompression_bomb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    image_path = tmp_path / "bomb.png"
+    with Image.new("RGB", (3, 2)) as image:
+        image.save(image_path)
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 2)
+
+    with pytest.raises(ImageInspectionError, match="exceeds safety limits"):
+        inspect_image(image_path)

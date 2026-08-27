@@ -93,8 +93,9 @@ examples/sample.ppm 是一个可直接阅读的 ASCII PPM 文件。四个像素�
 - src/rs_agent/tools.py：定义工具契约、输入检查、图片读取和统计计算。
 - src/rs_agent/agent.py：定义固定策略、五阶段轨迹和成功/失败收束。
 - src/rs_agent/__main__.py：解析命令行、调用 Agent、输出 JSON 和设置退出码。
-- tests/test_tools.py：验证工具元数据、统计值和三类非法输入。
+- tests/test_tools.py：验证工具元数据、统计值、各类非法输入和异常收束。
 - tests/test_agent.py：验证阶段顺序、真实工具调用和受控失败。
+- tests/test_main.py：验证 CLI 退出码契约和 JSON 输出结构。
 - examples/sample.ppm：提供 fresh clone 后即可使用的确定性输入。
 - pyproject.toml 与 uv.lock：定义并锁定可复现环境。
 
@@ -159,11 +160,13 @@ if not path_is_file:
 ~~~python
 except UnidentifiedImageError as exc:
     raise ImageInspectionError(f"File is not a readable image: {display_path}") from exc
+except DecompressionBombError as exc:
+    raise ImageInspectionError(f"Image exceeds safety limits: {display_path}") from exc
 except OSError as exc:
     raise ImageInspectionError(f"Could not read image data: {display_path}") from exc
 ~~~
 
-UnidentifiedImageError 对应无法识别的文件，OSError 对应读取失败或解码损坏。代码没有捕获宽泛的 Exception，因此编程错误不会被误装成普通业务失败。
+UnidentifiedImageError 对应无法识别的文件，OSError 对应读取失败或解码损坏，DecompressionBombError 对应图片像素超过 Pillow 内置的安全上限。这三种都是工具可以合理预期的失败，因此都被收束为 ImageInspectionError。代码没有捕获宽泛的 Exception，因此编程错误不会被误装成普通业务失败。
 
 ### 2.5 返回结构必须稳定、透明
 
@@ -271,6 +274,9 @@ Image.open 可能延迟读取像素，因此显式调用 image.load，确保损�
 ### 3.6 每个通道独立计算统计值
 
 ~~~python
+_HIGH_BIT_DEPTH_MODES = {"I", "I;16", "I;16L", "I;16B", "F"}
+
+
 def _calculate_statistics(
     image: Image.Image, bands: list[str]
 ) -> dict[str, dict[str, int | float]]:
@@ -278,17 +284,25 @@ def _calculate_statistics(
 
     for band_name, band_image in zip(bands, image.split(), strict=True):
         minimum, maximum = band_image.getextrema()
-        mean = ImageStat.Stat(band_image).mean[0]
         statistics[band_name] = {
             "min": minimum,
             "max": maximum,
-            "mean": round(mean, 4),
+            "mean": round(_band_mean(band_image), 4),
         }
 
     return statistics
+
+
+def _band_mean(band_image: Image.Image) -> int | float:
+    if band_image.mode in _HIGH_BIT_DEPTH_MODES:
+        width, height = band_image.size
+        return sum(band_image.getdata()) / (width * height)
+    return ImageStat.Stat(band_image).mean[0]
 ~~~
 
-image.split 将图片拆成单通道图片，getextrema 读取最小值和最大值，ImageStat.Stat 计算平均值。zip 的 strict=True 保证通道名数量与拆分后的通道数量一致。平均值最多保留四位小数，使 CLI 输出和测试结果稳定。
+image.split 将图片拆成单通道图片，getextrema 读取最小值和最大值，均值由 `_band_mean` 计算。zip 的 strict=True 保证通道名数量与拆分后的通道数量一致。平均值最多保留四位小数，使 CLI 输出和测试结果稳定。
+
+均值走两条路径：8-bit 波段（`L` 以及 RGB 拆分后的各通道）继续用 ImageStat.Stat，因为它对 256 bin 直方图是精确的；`I`、`I;16`（含 `I;16L`/`I;16B`）和 `F` 等高位深模式改用 `sum(getdata()) / 像素数`，因为 ImageStat 在这些模式下只用 256 bin 直方图反推均值，会把 16-bit 数据静默压错（例如 `[0, 65535]` 会被算成接近 0）。这两种遥感常用位深必须从原始像素求和。
 
 ### 3.7 成功结果进入 observation
 
@@ -456,15 +470,17 @@ git status --short
 uv run python -m rs_agent inspect examples/does-not-exist.png
 ~~~
 
-本次实际结果为：
+本次实际结果为（首版 MVP 合并时记录的验收快照）：
 
 - uv lock 成功解析 8 个包；
 - uv sync --locked 成功构建并安装项目；
 - 成功 CLI 返回退出码 0，轨迹严格包含五个阶段；
 - sample.ppm 被识别为 2×2 RGB PPM，三个通道统计均为 0、255、127.5；
-- pytest 结果为 7 passed；
+- pytest 全部通过；
 - git diff --check 返回 0；
 - 失败 CLI 返回退出码 1，输出结构化 failed 结果且没有 traceback。
+
+后续若新增测试或工具，pytest 用例总数会随之变化；以当前提交运行 `uv run pytest -q` 拿到的数字为准。
 
 ## 5. Correct：失败如何被收束，问题如何被修正
 
@@ -482,11 +498,13 @@ if not path_is_file:
 ~~~python
 except UnidentifiedImageError as exc:
     raise ImageInspectionError(f"File is not a readable image: {display_path}") from exc
+except DecompressionBombError as exc:
+    raise ImageInspectionError(f"Image exceeds safety limits: {display_path}") from exc
 except OSError as exc:
     raise ImageInspectionError(f"Could not read image data: {display_path}") from exc
 ~~~
 
-图片识别和读取错误也被转换成相同异常类型。from exc 保留了开发调试时的异常链，但 Agent 面向终端输出时只使用自定义错误消息。
+无法识别、解压炸弹和读取失败都被转换成相同的 ImageInspectionError，因此 Agent 层只用一个 except 即可收束。from exc 保留了开发调试时的异常链，但 Agent 面向终端输出时只使用自定义错误消息。
 
 ### 5.2 Agent 层把异常转换为 observation
 
