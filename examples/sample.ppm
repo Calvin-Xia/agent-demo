@@ -1,0 +1,6 @@
+P3
+# A 2x2 RGB image: red, green, blue, and white.
+2 2
+255
+255 0 0   0 255 0
+0 0 255   255 255 255
