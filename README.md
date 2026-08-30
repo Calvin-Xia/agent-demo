@@ -38,6 +38,18 @@ uv run pytest -q
 
 代码、数据流、测试与失败收束的完整拆解见 [`docs/minimal-image-agent-tool-walkthrough.md`](docs/minimal-image-agent-tool-walkthrough.md)。
 
+## 检查遥感栅格元数据
+
+系统能够执行 `gdalinfo` 时，可以读取单个栅格的低成本元数据：
+
+```bash
+uv run python -m rs_agent inspect-raster path/to/image.tif
+```
+
+该命令只保留驱动、尺寸、波段、坐标系、地理变换、像元大小和四角坐标等紧凑字段。当前不计算统计信息，也不执行多时相分析。
+
+字段映射、外部命令边界、测试与受控失败机制见 [`docs/raster-metadata-inspection-tool-walkthrough.md`](docs/raster-metadata-inspection-tool-walkthrough.md)。
+
 ## 路线图
 
 - [x] 建立 Python 与 `uv` 项目骨架；
