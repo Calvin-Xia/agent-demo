@@ -1,6 +1,6 @@
 # multitemporal-rs-agent-demo
 
-面向多时相遥感影像分析的 Agent 实验仓库。
+面向多时相遥感影像分析的 Agent 实验仓库 test。
 
 本项目围绕“大语言模型智能体的工具调用策略与任务分解能力”展开，目标是在多时相遥感影像分析场景中，构建一个简单、透明、可复现的 Agent 框架，并逐步比较不同工具组织与任务分解策略的实际表现。
 
@@ -37,6 +37,18 @@ uv run pytest -q
 命令输出 JSON 形式的完整五阶段轨迹：`task` 记录输入任务，`decision` 展示固定策略的工具选择，`action` 记录调用参数，`observation` 保存工具结果，`final` 给出受控的最终状态和答案。
 
 代码、数据流、测试与失败收束的完整拆解见 [`docs/minimal-image-agent-tool-walkthrough.md`](docs/minimal-image-agent-tool-walkthrough.md)。
+
+## 检查遥感栅格元数据
+
+系统能够执行 `gdalinfo` 时，可以读取单个栅格的低成本元数据：
+
+```bash
+uv run python -m rs_agent inspect-raster path/to/image.tif
+```
+
+该命令只保留驱动、尺寸、波段、坐标系、地理变换、像元大小和四角坐标等紧凑字段。当前不计算统计信息，也不执行多时相分析。
+
+字段映射、外部命令边界、测试与受控失败机制见 [`docs/raster-metadata-inspection-tool-walkthrough.md`](docs/raster-metadata-inspection-tool-walkthrough.md)。
 
 ## 路线图
 
