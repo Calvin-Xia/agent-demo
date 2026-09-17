@@ -20,3 +20,9 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# local image examples
+*.jpg
+*.png
+*.tif
+*.TIF
