@@ -5,7 +5,13 @@ import sys
 
 import pytest
 
-from rs_agent.__main__ import ChatState, _handle_slash, build_parser, main
+from rs_agent.__main__ import (
+    ChatState,
+    _handle_slash,
+    _rebuild_session,
+    build_parser,
+    main,
+)
 from rs_agent.harness import Harness
 from rs_agent.llm import LLMClient, LLMConfig
 from rs_agent.profiles import Profile, ProfileStore
@@ -289,6 +295,67 @@ def test_no_profile_ignores_saved_profile_in_menu(
     assert "profile=(none)" in captured.err
     # The saved last profile must not be cleared by an ignored-profile run.
     assert ProfileStore(profiles_file).last_profile == "localchat"
+
+
+def test_use_after_menu_selection_applies_new_profile(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+    monkeypatch.setenv("REMOTE_KEY", "sk-remote-value")
+    state = _state(tmp_path)
+    state.store.upsert(
+        Profile(
+            name="remote",
+            model="remote-model",
+            api="responses",
+            api_key_env="REMOTE_KEY",
+        )
+    )
+    # Simulate interactive menu answers having been written onto args.
+    state.args.api = "chat"
+    state.args.model = "stale-menu-model"
+    state.args.thinking = "enabled"
+    state.args.reasoning_effort = "high"
+    state.extra["cli_overrides"] = {
+        "api": None,
+        "model": None,
+        "thinking": None,
+        "reasoning_effort": None,
+    }
+
+    _rebuild_session(state, "remote")
+
+    assert state.profile_name == "remote"
+    assert state.config.model == "remote-model"
+    assert state.config.api == "responses"
+    # No CLI flags were given, so the stale menu thinking settings must not leak.
+    assert state.config.thinking != "enabled"
+    assert state.config.reasoning_effort != "high"
+
+
+def test_use_keeps_true_cli_flags_authoritative(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+    monkeypatch.setenv("REMOTE_KEY", "sk-remote-value")
+    state = _state(tmp_path)
+    state.store.upsert(
+        Profile(
+            name="remote",
+            model="remote-model",
+            api="responses",
+            api_key_env="REMOTE_KEY",
+        )
+    )
+    state.args.api = "chat"  # menu-derived value
+    state.args.model = "stale-menu-model"
+    state.extra["cli_overrides"] = {
+        "api": "chat",
+        "model": None,
+        "thinking": None,
+        "reasoning_effort": None,
+    }
+
+    _rebuild_session(state, "remote")
+
+    assert state.config.api == "chat"  # explicit CLI flag still wins
+    assert state.config.model == "remote-model"  # profile supplies the rest
 
 
 def test_no_profile_ignores_menu_profile_selection(

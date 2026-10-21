@@ -11,6 +11,7 @@ from rs_agent.__main__ import (
     build_parser,
 )
 from rs_agent.llm import LLMConfig
+from rs_agent.profiles import Profile, ProfileStore
 
 
 def _run_menu(monkeypatch, replies: list[str]) -> tuple[dict, str]:
@@ -151,3 +152,47 @@ def test_build_config_rejects_invalid_api_from_env_file(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="Unsupported api"):
         _build_config(args)
+
+
+def test_menu_temporary_choice_rebuilds_defaults(tmp_path, monkeypatch):
+    store = ProfileStore(tmp_path / "profiles.json")
+    store.upsert(
+        Profile(
+            name="work",
+            base_url="https://work.example",
+            model="work-model",
+            api="responses",
+        )
+    )
+    active_config = LLMConfig(
+        api_key="k",
+        base_url="https://work.example",
+        model="work-model",
+        api="responses",
+    )
+    env_config = LLMConfig(
+        api_key="k",
+        base_url="https://api.deepseek.com",
+        model="deepseek-flash",
+        api="chat",
+    )
+    calls = []
+
+    def build_config(profile):
+        calls.append(profile)
+        return env_config if profile is None else active_config
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("1\n\n\n"))
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+
+    selection = _interactive_menu(
+        active_config,
+        store=store,
+        active_name="work",
+        build_config=build_config,
+    )
+
+    assert calls == [None]  # temporary option rebuilds from env/CLI defaults
+    assert selection["profile"] is None
+    assert selection["api"] == "chat"
+    assert selection["model"] == "deepseek-flash"

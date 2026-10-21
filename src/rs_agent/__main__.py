@@ -386,9 +386,11 @@ def _interactive_menu(
     has_profiles = store is not None and bool(store.names())
     if has_profiles:
         profile_name = _choose_profile(store, active_name)
-        if profile_name is not None:
-            profile = store.get(profile_name) if store is not None else None
-        if profile is not None and build_config is not None:
+        profile = store.get(profile_name) if profile_name else None
+        # Rebuild defaults for the selected profile *and* for the temporary
+        # option (profile=None -> .env/CLI defaults), otherwise choosing
+        # "temporary" would keep showing the previously active profile.
+        if build_config is not None:
             config = build_config(profile)
 
     offset = 2 if has_profiles else 1
@@ -428,10 +430,31 @@ class ChatState:
         return self.store.get(self.profile_name) if self.profile_name else None
 
 
+def _args_without_menu_overrides(
+    args: argparse.Namespace, cli_overrides: dict[str, str | None]
+) -> argparse.Namespace:
+    """Copy args, restoring the true CLI values of menu-controlled fields.
+
+    Menu answers are stored on ``args`` for the current session, but they must
+    not survive as apparent CLI overrides when a later ``/use`` selects a
+    different profile.  Only values the user actually passed on the command
+    line stay authoritative.
+    """
+    clone = argparse.Namespace(**vars(args))
+    clone.api = cli_overrides.get("api")
+    clone.model = cli_overrides.get("model")
+    clone.thinking = cli_overrides.get("thinking")
+    clone.reasoning_effort = cli_overrides.get("reasoning_effort")
+    return clone
+
+
 def _rebuild_session(state: ChatState, profile_name: str | None) -> None:
     """Rebuild the client/harness for a newly selected profile, keeping history."""
     profile = state.store.get(profile_name) if profile_name else None
-    config = _build_config(state.args, profile)
+    rebuild_args = _args_without_menu_overrides(
+        state.args, state.extra.get("cli_overrides", {})
+    )
+    config = _build_config(rebuild_args, profile)
     harness = Harness(
         LLMClient(config),
         max_steps=state.args.max_steps,
@@ -624,6 +647,12 @@ def _run_chat(args: argparse.Namespace) -> int:
         return 2
 
     one_shot = " ".join(args.prompt).strip()
+    cli_overrides: dict[str, str | None] = {
+        "api": args.api,
+        "model": args.model,
+        "thinking": args.thinking,
+        "reasoning_effort": args.reasoning_effort,
+    }
     if not one_shot and not args.no_menu:
         try:
             selection = _interactive_menu(
@@ -674,6 +703,7 @@ def _run_chat(args: argparse.Namespace) -> int:
         profile_name=profile_name,
         config=config,
         harness=harness,
+        extra={"cli_overrides": cli_overrides},
     )
     return _chat_repl(state)
 
