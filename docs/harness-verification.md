@@ -5,13 +5,13 @@
 - 验收对象：`python -m rs_agent chat` 的最小 Agent harness（`src/rs_agent/llm.py`、`harness.py`、`__main__.py`）、本轮新增的配置档案模块 `src/rs_agent/profiles.py` 与斜杠命令 `--profile` / `--no-profile` / `--profiles-file` / `/profiles` `/config` `/use` `/save` `/delete` / 启动菜单「① 配置档案」，及其测试
 - 验收方式：只读代码审查 + 黑盒真实 E2E + 独立新增冒烟测试 + 本地故障注入（不修改实现文件）
 - 真实 API：DeepSeek `https://api.deepseek.com`，模型 `deepseek-flash`，`chat/completions` 与 `responses` 两种线格式
-- 验收基线：**v7**。历史：v2 59、v3 61、v4 73、v5 74、v6 97 passed；v7 为 **100 passed**。本报告证据均取自 v7，修复前证据单独标注
+- 验收基线：**v8**（v7 之后的维护改动）。历史：v2 59、v3 61、v4 73、v5 74、v6 97、v7 100 passed；v8 为 **101 passed**。本报告证据均取自 v8；v8 仅改 `tools.py`/`test_tools.py`，不改变 harness 行为，harness 相关证据沿用 v7 冻结版
 
 ## 1. 结论
 
 **通过，无阻塞项。**
 
-v7 复验结果：100 个测试全绿（30 个旧测试 + 70 个新测试）。既有能力（双方言真实工具调用、交互多轮、思考模式 `reasoning_content` 回传、`.env` 优先级与 BOM/行内注释、错误路径、横幅脱敏、路径保持规则）继续通过；本轮新增能力全部按预期工作：
+v8 复验结果：**101 个测试全绿（31 个旧测试 + 70 个新测试）**。v8 是 v7 之后的一处低风险维护改动：`_band_mean()` 将已弃用的 `Image.getdata()` 换成 Pillow 12.1 引入的 `get_flattened_data()`，并新增 1 个回归测试；**不改变 harness 行为**。既有能力（双方言真实工具调用、交互多轮、思考模式 `reasoning_content` 回传、`.env` 优先级与 BOM/行内注释、配置档案与斜杠命令、错误路径、横幅脱敏、路径保持规则）继续通过：
 
 - 配置档案读写：`/save` 生成的 JSON **只含 `api_key_env`，无明文 key**；`last_profile` 持久化；原子写无残留临时文件；`/delete` 生效；
 - 档案消费：`--profile` 一次性生效并更新 last；二次启动 `--no-menu` 自动沿用 last；`--no-profile` 一次性忽略档案；未知档案与损坏 JSON 均退出码 2、错误可读、无栈；
@@ -21,9 +21,11 @@ v7 复验结果：100 个测试全绿（30 个旧测试 + 70 个新测试）。�
 
 历次问题状态：v2 修复「流截断/`response.failed` 静默成功」「`--max-steps` 打栈」「交互提示符污染 stdout」；v3 修复 R1（读流异常未包装）与 R2（截断无提示）；v4 修复空环境变量覆盖 `.env`；v5 修复 R4（`.env` BOM/行内注释）；v6 新增配置档案/斜杠命令并发现 **R5（Low）**：`--no-profile` 在交互菜单路径被忽略并会清空 `last_profile`；**v7 已修复 R5**（`--no-profile` 全路径生效、与 `--profile` 互斥）。当前仅保留 1 个信息项 R3（不做重试/超时不可配，属文档声明的刻意范围）。
 
-## 2. 验收基线（v7 冻结版）
+v8 维护项（低风险，已完成）：`_band_mean()` 的 `Image.getdata()` → `Image.get_flattened_data()`（Pillow ≥12.1，语义一致），消除 16-bit 均值路径的 Pillow DeprecationWarning；新增回归测试 `test_inspect_image_preserves_16bit_mean_without_deprecation_warning`。统计值、harness 行为与 CLI 输出均不变（证据见 §3.4）。
 
-冻结基线采集时工作区尚未提交；该基线随后提交到本地分支 `feat/minimal-llm-harness`（未推送）。以下 SHA-256 前 16 位为本次 v7 验收的冻结基线；报告所有结论均对应该基线（v7 仅更新 `__main__.py` 与 `test_slash_commands.py`，其余文件与 v6 相同）。v7 之后的洁癖对齐只做了 README / AGENTS / docs 的文字同步与两个测试文件的 EOF 空行清理（测试结果仍为 100 passed），下表已刷新为提交前最终值：
+## 2. 验收基线（v8 工作区）
+
+v7 基线已提交到本地分支 `feat/minimal-llm-harness`（commit `eefabd0`，未推送）；v8 是 v7 之后的维护改动，**当前仅有 `src/rs_agent/tools.py` 与 `tests/test_tools.py` 两个工作区改动**，其余文件与 v7 已提交版本相同。以下 SHA-256 前 16 位为本次 v8 验收的工作区基线；harness 行为相关证据沿用 v7 冻结版，v8 只复验工具统计与警告行为：
 
 | 文件 | SHA-256（前 16） | 字节数 |
 | --- | --- | --- |
@@ -31,12 +33,14 @@ v7 复验结果：100 个测试全绿（30 个旧测试 + 70 个新测试）。�
 | `src/rs_agent/__main__.py` | `5847A03938D9A47D` | 24547 |
 | `src/rs_agent/llm.py` | `3D3FC8CC778D8F0E` | 23134 |
 | `src/rs_agent/harness.py` | `846E668302254678` | 9983 |
+| `src/rs_agent/tools.py`（v8 维护） | `2B2D9B94AFEE42D8` | 11111 |
 | `tests/test_profiles.py` | `D23E4EC48D9EF52A` | 4590 |
 | `tests/test_slash_commands.py` | `BD0613BB425FB954` | 9129 |
 | `tests/test_interactive_menu.py` | `7F8D4D1F3A37910E` | 4521 |
 | `tests/test_cli_smoke.py` | `893F1BC5A27880C6` | 5902 |
 | `tests/test_llm.py` | `98583274F5F8C3F3` | 17682 |
 | `tests/test_harness.py` | `07C1AE845BAF6454` | 7001 |
+| `tests/test_tools.py`（v8 维护） | `317B02A127D6A6AC` | 3162 |
 | `.env.example` | `2F3FE95372C8D433` | 1353 |
 | `.gitignore` | `63B4D22CB99CE18D` | 550 |
 
@@ -48,21 +52,21 @@ v7 复验结果：100 个测试全绿（30 个旧测试 + 70 个新测试）。�
 
 ```powershell
 uv sync --locked
-# Resolved 8 packages in 0.83ms
-# Checked 8 packages in 0.70ms
+# Resolved 8 packages in 0.92ms
+# Checked 8 packages in 0.66ms
 ```
 
 ### 3.2 测试套件
 
 ```powershell
 uv run pytest -q
-# 100 passed, 2 warnings in 0.94s
+# 101 passed, 1 warning in 0.87s
 ```
 
 | 分组 | 命令 | 结果 |
 | --- | --- | --- |
-| 全套 | `uv run pytest -q` | **100 passed** |
-| 原有旧测试（4 个文件） | `uv run pytest tests/test_agent.py tests/test_main.py tests/test_raster_tools.py tests/test_tools.py -q` | **30 passed**（旧功能未被破坏） |
+| 全套 | `uv run pytest -q` | **101 passed**（1 warning，仅 `.pytest_cache` ACL 的 cacheprovider 警告） |
+| 原有旧测试（4 个文件） | `uv run pytest tests/test_agent.py tests/test_main.py tests/test_raster_tools.py tests/test_tools.py -q` | **31 passed**（`test_tools.py` 由 6→7，v8 新增回归测试） |
 | 新增测试 | 6 个新测试文件 | **70 passed**（22 + 9 + 7 + 9 + 9 + 14） |
 
 | 测试文件 | 用例数 | v6 变更/覆盖 |
@@ -74,7 +78,7 @@ uv run pytest -q
 | `tests/test_profiles.py` | 9（v6 新增） | 缺失文件为空、增删改与 last 持久化、损坏 JSON/未知字段拒绝、字段校验、roundtrip 与脱敏、`from_config` 不落明文 key、原子写同目录临时文件且清理、写失败转 `ProfileError` |
 | `tests/test_slash_commands.py` | 14（v6 新增） | 参数暴露、`/save` 无明文 key/显式 ENV、`/profiles` 标记、`/use` 切档保历史、`/use` 不存在、`/config` 脱敏、`/delete`、`/help`/未知命令/`/exit`、last 档案自动复用、未知档案退出码 2；v7 新增 3 个测试：`--profile`/`--no-profile` 互斥报错、`--no-profile` 菜单忽略档案且不清空 last、显式选号也不会应用档案 |
 
-2 个 warning 均非失败：`tests/test_tools.py` 的 Pillow `getdata` 弃用警告是旧测试既有问题；`.pytest_cache` 写入警告来自本机该目录 ACL 受限（与 v4/v5 相同，不影响测试结果）。
+v8 后全量仅剩 1 个 warning：`.pytest_cache` 写入警告（本机该目录 ACL 受限，与代码无关）；Pillow `getdata` 弃用警告已随 v8 维护改动消失。`pytest tests/test_tools.py -W error::DeprecationWarning` = 7 passed，全量 `pytest -q -W error::DeprecationWarning` = 101 passed。
 
 ### 3.3 旧 CLI 回归
 
@@ -84,6 +88,18 @@ uv run python -m rs_agent inspect examples/missing.png          # EXIT=1，statu
 uv run python -m rs_agent inspect-raster examples/missing.tif   # EXIT=1，JSON 错误可读
 git diff --check                                                # EXIT=0
 ```
+
+### 3.4 v8 维护改动：`getdata()` → `get_flattened_data()`
+
+- 改动范围：仅 `src/rs_agent/tools.py::_band_mean()` 的高位深分支（`I` / `I;16` / `I;16B` / `I;16L` / `F`）把 `sum(band_image.getdata())` 换成 `sum(band_image.get_flattened_data())`；8-bit 分支仍走 `ImageStat.Stat().mean`，未改动；
+- 依据：`get_flattened_data()` 由 Pillow 12.1.0 引入，与 `getdata()` 语义一致；项目依赖下限本就是 `pillow>=12.1.0`（当前锁文件解析到 Pillow **12.3.0**），无需新增依赖；
+- 独立等价性验证（verifier 自写脚本，非复用单测）：
+  - `I;16` `[0, 65535]` → 新旧算法均 `32767.5`；`I` `[0, 100000]` → 均 `50000.0`；`F` `[0.0, 1.5]` → 均 `0.75`；
+  - 保存为 16-bit PNG 后走 `inspect_image()` 全链路 → `{"I": {"min": 0, "max": 65535, "mean": 32767.5}}`；
+  - `examples/sample.ppm` 的 `inspect` 输出与 v7 完全一致（2×2、RGB、三波段 min 0 / max 255 / mean 127.5）；
+- 弃用警告：`uv run pytest tests/test_tools.py -W error::DeprecationWarning` = **7 passed**；`uv run pytest -q -W error::DeprecationWarning` = **101 passed**（无 Pillow DeprecationWarning；唯一 warning 是 cacheprovider）；
+- 新增回归测试：`test_inspect_image_preserves_16bit_mean_without_deprecation_warning`（断言 `inspect_image` 不产生 `DeprecationWarning` 且均值仍为 32767.5）；
+- 结论：**低风险维护项，统计值、JSON 输出与 harness 行为均不变**；v8 未触碰 harness/协议/CLI 代码，§4/§5 的真实 E2E 与错误路径结论继续适用。
 
 ## 4. 真实 E2E 证据
 
@@ -230,7 +246,7 @@ uv run python -m rs_agent chat --profile localresp --profiles-file v6verify/prof
 | R4 | ~~信息~~ 已修复（v5） | `.env` 的 UTF-8 BOM 与行内注释解析边界 | v5 改为 `utf-8-sig` + 未加引号值按 ` #` 截断；v7 全量测试仍通过（`test_load_env_file_handles_bom_and_inline_comments`） | **已修复** |
 | R5 | ~~低~~ 已修复（v7） | v6 中 `--no-profile` 在**交互菜单**路径被忽略：菜单仍显示「① 配置档案」且可选中档案（横幅变为该档案），与 README/help“忽略所有档案”矛盾；EOF/临时配置选择还会把持久化的 `last_profile` 清空 | v7 修复：`--no-profile` 时菜单分支传 `store=None`（无「① 配置档案」）、`profile_name` 强制 None、菜单后不 `store.set_last`；`--profile`/`--no-profile` 改为 argparse 互斥。复验：菜单首项为「① 接口协议」、横幅 `profile=(none)`、store 的 SHA-256 与 last 前后未变；两 flag 同用 exit 2 可读；新增 3 个测试锁定 | **已修复** |
 
-v7 已无低严重度以上遗留项；R1/R2（v3）、R4（v5）、R5（v7）修复后各有回归测试锁定，仅 R3 作为信息项保留（文档声明的刻意范围），不影响 MVP 交付。
+v7 已无低严重度以上遗留项；R1/R2（v3）、R4（v5）、R5（v7）修复后各有回归测试锁定，仅 R3 作为信息项保留（文档声明的刻意范围），不影响 MVP 交付。v8 为低风险维护改动（`getdata` 弃用替换 + 回归测试），**不新增遗留项**，harness 行为不变。
 
 ## 8. 与项目文档的一致性
 
@@ -255,6 +271,8 @@ $env:PYTHONIOENCODING = 'utf-8'
 
 uv sync --locked
 uv run pytest -q
+uv run pytest -q -W error::DeprecationWarning          # v8：无 Pillow 弃用警告
+uv run pytest tests/test_tools.py -W error::DeprecationWarning -q
 
 # 档案读写（仓库内临时路径；不要用 %TEMP% 根）
 "/save localchat`n/config`n/profiles`n/exit`n" |
@@ -282,4 +300,4 @@ uv run python -m rs_agent chat --profile localresp --profiles-file v7verify/prof
 
 ## 11. 最终结论
 
-**通过（PASS），无阻塞项。** v7 冻结版 100/100 测试通过；配置档案（`/save`/`/profiles`/`/config`/`/use`/`/delete`、`--profile/--no-profile/--profiles-file`、`last_profile` 持久化与原子写、菜单「① 配置档案」）与既有双方言工具循环、`.env`、错误路径均达到验收标准；R1/R2/R4 保持已修复，R5 已在 v7 修复（`--no-profile` 全路径生效且与 `--profile` 互斥），仅 R3（无重试/超时不可配）作为信息项保留，属文档声明的刻意范围，不影响交付。
+**通过（PASS），无阻塞项。** v8 基线（v7 commit `eefabd0` + 两个工作区维护改动）**101/101 测试通过**：配置档案、双向言工具循环、`.env`、错误路径等 v7 验收结论继续有效；v8 的 `getdata()` → `get_flattened_data()` 为低风险维护改动，16-bit / 普通 PNG / `examples/sample.ppm` 统计值与 JSON 输出不变，Pillow DeprecationWarning 消失，并新增回归测试锁定；R1/R2/R4/R5 保持已修复，仅 R3（无重试/超时不可配）作为信息项保留，属文档声明的刻意范围，不影响交付。
