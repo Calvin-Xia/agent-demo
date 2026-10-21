@@ -5,13 +5,13 @@
 - 验收对象：`python -m rs_agent chat` 的最小 Agent harness（`src/rs_agent/llm.py`、`harness.py`、`__main__.py`）、本轮新增的配置档案模块 `src/rs_agent/profiles.py` 与斜杠命令 `--profile` / `--no-profile` / `--profiles-file` / `/profiles` `/config` `/use` `/save` `/delete` / 启动菜单「① 配置档案」，及其测试
 - 验收方式：只读代码审查 + 黑盒真实 E2E + 独立新增冒烟测试 + 本地故障注入（不修改实现文件）
 - 真实 API：DeepSeek `https://api.deepseek.com`，模型 `deepseek-flash`，`chat/completions` 与 `responses` 两种线格式
-- 验收基线：**v9**（PR #8 Codex review P1/P2 修复）。历史：v2 59、v3 61、v4 73、v5 74、v6 97、v7 100、v8 101 passed；v9 为 **104 passed**。本报告证据均取自 v9（commit `c585cb6`）；v9 仅改交互菜单/`/use` 的配置隔离逻辑，harness/协议/工具行为不变，相关证据沿用 v7/v8
+- 验收基线：**v10**（PR #8 第二轮 Codex P2#3/P2#4 修复）。历史：v2 59、v3 61、v4 73、v5 74、v6 97、v7 100、v8 101、v9 104 passed；v10 为 **108 passed**。本报告证据均取自 v10（commit `d5b9eb3`）；v10 仅改启动时档案 key 校验时机与档案字段类型校验，harness/协议/工具行为不变
 
 ## 1. 结论
 
 **通过，无阻塞项。**
 
-v9 复验结果：**104 个测试全绿（31 个旧测试 + 73 个新测试）**。v9 修复 PR #8 的 2 条 Codex review finding：**P1**（交互菜单答案被写进 args，随后 `/use` 把它们当成 CLI 覆盖，导致切档后协议/模型/思考强度仍是旧档案）与 **P2**（已激活档案时选「临时配置」后，默认值仍来自旧档案）。修复后菜单选择与真实 CLI flag 正确隔离：`/use` 用新档案配置，真实 CLI flag 仍优先；菜单选临时配置时默认值来自 `.env`/环境变量。既有能力（双向言工具调用、多轮、思考模式回传、`.env`、配置档案与斜杠命令、错误路径、横幅脱敏、路径保持）继续通过：
+v10 复验结果：**108 个测试全绿（31 个旧测试 + 77 个新测试）**。v10 修复 PR #8 第二轮 Codex review 的 2 条 P2：**P2#3**（`last_profile` 的 key 环境变量失效时，启动在菜单前就报错 exit 2，用户无法切换档案）与 **P2#4**（手工编辑档案字段类型错误时抛未捕获 `TypeError`/`AttributeError`）。修复后：存在交互菜单时先用 tolerant 模式收集默认值，菜单正常出现，选择后再 strict 校验；`--no-menu` 保持可读错误 exit 2；档案字段非字符串时统一抛 `ProfileError`，CLI exit 2、无栈。既有能力（双向言工具调用、多轮、思考模式回传、`.env`、配置档案与斜杠命令、错误路径、横幅脱敏、路径保持）继续通过：
 
 - 配置档案读写：`/save` 生成的 JSON **只含 `api_key_env`，无明文 key**；`last_profile` 持久化；原子写无残留临时文件；`/delete` 生效；
 - 档案消费：`--profile` 一次性生效并更新 last；二次启动 `--no-menu` 自动沿用 last；`--no-profile` 一次性忽略档案；未知档案与损坏 JSON 均退出码 2、错误可读、无栈；
@@ -25,19 +25,21 @@ v8 维护项（低风险，已完成）：`_band_mean()` 的 `Image.getdata()` �
 
 v9 review 修复（PR #8 Codex P1/P2，commit `c585cb6`，已完成）：新增 `_args_without_menu_overrides()`，`_rebuild_session()` 在 `/use` 时只保留真实 CLI flag、丢弃菜单答案（P1）；`_interactive_menu()` 对选择的档案（**包括「临时配置」None**）都 `build_config(profile)` 重建默认值（P2）。新增 3 个回归测试；独立 E2E 证据见 §3.5。
 
-## 2. 验收基线（v9，commit c585cb6）
+v10 review 修复（PR #8 第二轮 Codex P2#3/P2#4，commit `d5b9eb3`，已完成）：`_profile_api_key(required=)` / `_build_config(require_profile_key=)` 在菜单存在时先 tolerant 解析（stale key 不阻塞菜单），选择后 strict 校验；`Profile.__post_init__` 先校验 name 与所有可选字段必须为 str，否则统一 `ProfileError`。新增 4 个回归测试；独立 E2E 证据见 §3.6。
 
-v7 基线提交 `eefabd0`；v8 维护改动提交 `0a99919`；v9 是 **PR #8 Codex review 修复，提交 `c585cb6`（已推送）**，采集基线时工作区干净。以下 SHA-256 前 16 位为本次 v9 验收基线；v9 只改 `__main__.py` 与两个菜单/斜杠测试文件，其余文件自 v7/v8 未变，harness/协议/工具行为不变：
+## 2. 验收基线（v10，commit d5b9eb3）
+
+v7 基线提交 `eefabd0`；v8 维护改动提交 `0a99919`；v9 review 修复提交 `c585cb6`；v10 是 **PR #8 第二轮 Codex P2#3/P2#4 修复，提交 `d5b9eb3`（已推送）**，采集基线时工作区干净。以下 SHA-256 前 16 位为本次 v10 验收基线；v10 只改 `__main__.py`、`profiles.py` 与两个测试文件，其余文件自 v7/v8 未变，harness/协议/工具行为不变：
 
 | 文件 | SHA-256（前 16） | 字节数 |
 | --- | --- | --- |
-| `src/rs_agent/profiles.py` | `89A4D4E866360FB5` | 8055 |
-| `src/rs_agent/__main__.py` | `02C430FBFDE632CA` | 25787 |
+| `src/rs_agent/profiles.py` | `CC28BDC413A778AB` | 8528 |
+| `src/rs_agent/__main__.py` | `22DE6DF9BAB98B38` | 26436 |
 | `src/rs_agent/llm.py` | `3D3FC8CC778D8F0E` | 23134 |
 | `src/rs_agent/harness.py` | `846E668302254678` | 9983 |
 | `src/rs_agent/tools.py`（v8 维护） | `2B2D9B94AFEE42D8` | 11111 |
-| `tests/test_profiles.py` | `D23E4EC48D9EF52A` | 4590 |
-| `tests/test_slash_commands.py` | `F9C9EEB8E0B97073` | 11119 |
+| `tests/test_profiles.py` | `C8935DDDD4927CE4` | 5503 |
+| `tests/test_slash_commands.py` | `C63EDEE02D01D3EA` | 12556 |
 | `tests/test_interactive_menu.py` | `24FD94C3C786507B` | 5801 |
 | `tests/test_cli_smoke.py` | `893F1BC5A27880C6` | 5902 |
 | `tests/test_llm.py` | `98583274F5F8C3F3` | 17682 |
@@ -46,7 +48,7 @@ v7 基线提交 `eefabd0`；v8 维护改动提交 `0a99919`；v9 是 **PR #8 Cod
 | `.env.example` | `2F3FE95372C8D433` | 1353 |
 | `.gitignore` | `63B4D22CB99CE18D` | 550 |
 
-本地 `.env`（真实 key）与 `.rs_agent_profiles.json`（两套示例档案）**不纳入版本控制**：`git check-ignore` 命中 `.gitignore:35:.rs_agent_profiles.json*` 与 `.env`，`git status` 中均不出现；本报告不记录其内容。v9 复验期间 `.env` SHA-256 未变（`FA9530F4…`）；`.rs_agent_profiles.json` 在本轮复验开始前已被 Lead 的手工 API 复验更新（mtime 15:01:15，`last_profile=None`），verifier 未修改它；其 profile 只含 `api_key_env`，无明文 key。依赖未变：仍只有运行时 Pillow、测试 pytest；`uv.lock` 未改动，无新增第三方依赖。
+本地 `.env`（真实 key）与 `.rs_agent_profiles.json`（两套示例档案）**不纳入版本控制**：`git check-ignore` 命中 `.gitignore:35:.rs_agent_profiles.json*` 与 `.env`，`git status` 中均不出现；本报告不记录其内容。v10 复验期间 `.env`（`FA9530F4…`）与 `.rs_agent_profiles.json`（`EA38E129…`）哈希前后均未变，verifier 未修改本地配置；其 profile 只含 `api_key_env`，无明文 key。依赖未变：仍只有运行时 Pillow、测试 pytest；`uv.lock` 未改动，无新增第三方依赖。
 
 ## 3. 环境与测试结果
 
@@ -62,14 +64,14 @@ uv sync --locked
 
 ```powershell
 uv run pytest -q
-# 104 passed, 1 warning in 1.12s
+# 108 passed, 1 warning in 0.96s
 ```
 
 | 分组 | 命令 | 结果 |
 | --- | --- | --- |
-| 全套 | `uv run pytest -q` | **104 passed**（1 warning，仅 `.pytest_cache` ACL 的 cacheprovider 警告） |
+| 全套 | `uv run pytest -q` | **108 passed**（1 warning，仅 `.pytest_cache` ACL 的 cacheprovider 警告） |
 | 原有旧测试（4 个文件） | `uv run pytest tests/test_agent.py tests/test_main.py tests/test_raster_tools.py tests/test_tools.py -q` | **31 passed**（`test_tools.py` 7，v8 新增回归测试） |
-| 新增测试 | 6 个新测试文件 | **73 passed**（22 + 9 + 7 + 10 + 9 + 16） |
+| 新增测试 | 6 个新测试文件 | **77 passed**（22 + 9 + 7 + 10 + 11 + 18） |
 
 | 测试文件 | 用例数 | v6 变更/覆盖 |
 | --- | --- | --- |
@@ -77,10 +79,10 @@ uv run pytest -q
 | `tests/test_harness.py` | 9 | 工具循环、截断提示等（v3 起稳定） |
 | `tests/test_cli_smoke.py` | 7 | CLI 参数、无 key、非法 `--api`；v6 起“缺 key”用例加 `--no-profile` 隔离本地档案 |
 | `tests/test_interactive_menu.py` | 10 | 菜单默认/选择/重试/EOF/`--no-menu`；v6 扩展档案入口；v9 新增 `test_menu_temporary_choice_rebuilds_defaults`（P2） |
-| `tests/test_profiles.py` | 9（v6 新增） | 缺失文件为空、增删改与 last 持久化、损坏 JSON/未知字段拒绝、字段校验、roundtrip 与脱敏、`from_config` 不落明文 key、原子写同目录临时文件且清理、写失败转 `ProfileError` |
-| `tests/test_slash_commands.py` | 16（v6 新增） | 参数暴露、`/save` 无明文 key/显式 ENV、`/profiles` 标记、`/use` 切档保历史、`/use` 不存在、`/config` 脱敏、`/delete`、`/help`/未知命令/`/exit`、last 档案自动复用、未知档案退出码 2；v7 新增 3 个测试（两 flag 互斥、`--no-profile` 菜单忽略档案、显式选号不应用档案）；v9 新增 2 个测试：`test_use_after_menu_selection_applies_new_profile`（P1）、`test_use_keeps_true_cli_flags_authoritative` |
+| `tests/test_profiles.py` | 11（v6 新增） | 缺失文件为空、增删改与 last 持久化、损坏 JSON/未知字段拒绝、字段校验、roundtrip 与脱敏、`from_config` 不落明文 key、原子写同目录临时文件且清理、写失败转 `ProfileError`；v10 新增 2 个测试：`test_store_rejects_non_string_profile_fields`、`test_profile_rejects_non_string_fields_directly`（P2#4） |
+| `tests/test_slash_commands.py` | 18（v6 新增） | 参数暴露、`/save` 无明文 key/显式 ENV、`/profiles` 标记、`/use` 切档保历史、`/use` 不存在、`/config` 脱敏、`/delete`、`/help`/未知命令/`/exit`、last 档案自动复用、未知档案退出码 2；v7 新增 3 个测试（两 flag 互斥、`--no-profile` 菜单忽略档案、显式选号不应用档案）；v9 新增 2 个测试（P1 切档、CLI flag 优先）；v10 新增 2 个测试：`test_stale_profile_key_does_not_block_interactive_menu`、`test_stale_profile_key_without_menu_is_readable_error`（P2#3） |
 
-v9 后全量仅剩 1 个 warning：`.pytest_cache` 写入警告（本机该目录 ACL 受限，与代码无关）；Pillow `getdata` 弃用警告已随 v8 维护改动消失。`pytest tests/test_tools.py -W error::DeprecationWarning` = 7 passed，全量 `pytest -q -W error::DeprecationWarning` = **104 passed**（v9 复验时同样通过）。
+v10 后全量仅剩 1 个 warning：`.pytest_cache` 写入警告（本机该目录 ACL 受限，与代码无关）；Pillow `getdata` 弃用警告已随 v8 维护改动消失。`pytest tests/test_tools.py -W error::DeprecationWarning` = 7 passed，全量 `pytest -q -W error::DeprecationWarning` = **108 passed**（v10 复验时同样通过）。
 
 ### 3.3 旧 CLI 回归
 
@@ -99,7 +101,7 @@ git diff --check                                                # EXIT=0
   - `I;16` `[0, 65535]` → 新旧算法均 `32767.5`；`I` `[0, 100000]` → 均 `50000.0`；`F` `[0.0, 1.5]` → 均 `0.75`；
   - 保存为 16-bit PNG 后走 `inspect_image()` 全链路 → `{"I": {"min": 0, "max": 65535, "mean": 32767.5}}`；
   - `examples/sample.ppm` 的 `inspect` 输出与 v7 完全一致（2×2、RGB、三波段 min 0 / max 255 / mean 127.5）；
-- 弃用警告：`uv run pytest tests/test_tools.py -W error::DeprecationWarning` = **7 passed**；全量 `uv run pytest -q -W error::DeprecationWarning` = **104 passed**（v9 复验；无 Pillow DeprecationWarning；唯一 warning 是 cacheprovider）；
+- 弃用警告：`uv run pytest tests/test_tools.py -W error::DeprecationWarning` = **7 passed**；全量 `uv run pytest -q -W error::DeprecationWarning` = **108 passed**（v10 复验；无 Pillow DeprecationWarning；唯一 warning 是 cacheprovider）；
 - 新增回归测试：`test_inspect_image_preserves_16bit_mean_without_deprecation_warning`（断言 `inspect_image` 不产生 `DeprecationWarning` 且均值仍为 32767.5）；
 - 结论：**低风险维护项，统计值、JSON 输出与 harness 行为均不变**；v8 未触碰 harness/协议/CLI 代码，§4/§5 的真实 E2E 与错误路径结论继续适用。
 
@@ -114,9 +116,22 @@ git diff --check                                                # EXIT=0
   - **P2**：last=respp（responses/v4-pro/high），菜单选「临时配置」后协议/模型/思考默认索引均为 `[1]`（chat/flash/disabled，来自 `.env`/默认，而**不是**旧档案），横幅 `profile=(none) api=chat model=deepseek-flash thinking=disabled`，工具调用成功，**EXIT=0**（约 2s）；
   - 结论：P1/P2 均已修复，菜单/切档不再产生混合配置；v9 未改动 harness/协议/工具层。
 
+### 3.6 v10 PR #8 第二轮 Codex P2#3/P2#4 修复
+
+- **P2#3**（原 `__main__.py:644`）：`last_profile` 引用的 key 环境变量失效时，启动在菜单前就 `_build_config` 抛错 exit 2，用户无法切换档案。修复：新增 `_profile_api_key(..., required=)` 与 `_build_config(..., require_profile_key=)`；存在交互菜单时初始解析用 tolerant 模式（只需要默认值），菜单选择后再 strict 校验；`--no-menu` 保持 strict 可读错误；菜单的 `build_config` 回调也传 `require_profile_key=False`；
+- **P2#4**（`profiles.py:99`）：手工编辑档案字段类型错误（如 `base_url: 1`、`api_key_env: 3`）会抛未捕获的 `TypeError`/`AttributeError`。修复：`Profile.__post_init__` 先校验 `name` 与所有可选字段必须是 `str`（或 `None`），否则统一抛 `ProfileError`；
+- 新增 4 个回归测试：`test_stale_profile_key_does_not_block_interactive_menu`、`test_stale_profile_key_without_menu_is_readable_error`、`test_store_rejects_non_string_profile_fields`、`test_profile_rejects_non_string_fields_directly`；
+- **独立真实 CLI 复验**（仓库内临时 `v10verify/` profiles，验证后已删除）：
+  - **B1（stale last_profile + 菜单）**：`last_profile=broken`（`api_key_env=MISSING_BROKEN_KEY`，该变量不存在）→ 菜单正常出现（默认选中 broken），选「1) 临时配置」后回车走完 → 横幅 `profile=(none)`、key 来源 `.env`、工具调用成功，**EXIT=0**；不再被 stale key 阻塞；
+  - **B2（stale + `--no-menu`）**：同文件重建后 `--no-menu` → **EXIT=2**，stderr：`配置错误: 档案 'broken' 需要环境变量或 .env 中的 MISSING_BROKEN_KEY，当前没有找到`，无 traceback；
+  - **B3（菜单显式选 broken）**：菜单选择该档案后 strict 校验 → **EXIT=2**、可读错误、无 traceback（不会带着缺 key 的配置进入会话）；
+  - **C1/C2（非字符串字段 JSON）**：`{"base_url": 1}` → CLI **EXIT=2**，`配置错误: profile 'x': base_url must be a string`；`{"api_key_env": 3}` 同理；均无 traceback；
+  - **C3（直接构造）**：`ProfileStore(path)`、`Profile(name="x", base_url=1)`、`Profile(name="x", api_key_env=3)`、`Profile(name=1)` 均抛 `ProfileError`（而非 `TypeError`/`AttributeError`）；
+  - 结论：P2#3/P2#4 均已修复；v10 未改动 harness/协议/工具层。
+
 ## 4. 真实 E2E 证据
 
-说明：验收命令不设置任何 key 环境变量，由 CLI 从仓库 `.env` 或档案的 `api_key_env` 读取；本报告与终端输出中 key 一律为 `sk-****`。所有捕获输出与测试档案文件都做了“是否包含 `.env` 真实 key”的扫描，结果为空（见 §9）。为遵守本机“Python 子进程不可写 `%TEMP%` 根目录”的限制，档案 E2E 使用仓库内临时目录（§4.1/§4.4/§4.5 的取证为 v6 基线 `v6verify/`；v7 的 R5 复验使用 `v7verify/`；v9 的 P1/P2 复验使用 `v9verify/`），验收后均已删除，仓库无残留。
+说明：验收命令不设置任何 key 环境变量，由 CLI 从仓库 `.env` 或档案的 `api_key_env` 读取；本报告与终端输出中 key 一律为 `sk-****`。所有捕获输出与测试档案文件都做了“是否包含 `.env` 真实 key”的扫描，结果为空（见 §9）。为遵守本机“Python 子进程不可写 `%TEMP%` 根目录”的限制，档案 E2E 使用仓库内临时目录（§4.1/§4.4/§4.5 的取证为 v6 基线 `v6verify/`；v7 的 R5 复验使用 `v7verify/`；v9 的 P1/P2 复验使用 `v9verify/`；v10 的 P2#3/P2#4 复验使用 `v10verify/`），验收后均已删除，仓库无残留。
 
 ### 4.1 档案读写（`/save`、`/profiles`、`/config`、`/delete`）
 
@@ -226,7 +241,7 @@ uv run python -m rs_agent chat --profile localresp --profiles-file v6verify/prof
 - 错误路径：不可达端点 **EXIT=1** 可读；`--max-steps 0` **EXIT=2**；`--api grpc` **EXIT=2**；均无 traceback；
 - 旧 CLI `inspect` / `inspect-raster` 缺失路径回归正常（§3.3）。
 
-## 5. 错误路径证据（v7 复验）
+## 5. 错误路径证据（v10 复验）
 
 | 场景 | 命令/构造 | 结果 |
 | --- | --- | --- |
@@ -234,7 +249,9 @@ uv run python -m rs_agent chat --profile localresp --profiles-file v6verify/prof
 | 两个档案 flag 互斥（v7） | `chat --profile localchat --no-profile "hi"` | **EXIT=2**，argparse：`argument --no-profile: not allowed with argument --profile`，无 traceback |
 | 未知档案 | `chat --profile missing ...` | **EXIT=2**，`配置错误: 档案不存在: ...`，无 traceback |
 | 档案 JSON 损坏/版本不支持/字段非法 | 损坏 JSON、`{"version":99}`、未知字段 | **EXIT=2**，`配置错误: profile store ...` / `档案无效: ...`，无 traceback（另有单测覆盖） |
-| 档案 key 环境变量缺失 | 档案 `api_key_env=NOT_SET` | **EXIT=2**，`配置错误: 档案 'x' 需要环境变量或 .env 中的 NOT_SET...` |
+| 档案 key 环境变量缺失 | 档案 `api_key_env=NOT_SET` + `--no-menu` | **EXIT=2**，`配置错误: 档案 'x' 需要环境变量或 .env 中的 NOT_SET...`，无 traceback |
+| stale 档案 key + 交互菜单（v10） | `last_profile` 的 `api_key_env` 不存在 | 菜单正常出现（默认选中该档案），可选「临时配置」继续；**EXIT=0**，不再被阻塞 |
+| 档案字段非字符串（v10） | JSON `{"base_url": 1}` / `{"api_key_env": 3}` | **EXIT=2**，`配置错误: profile 'x': base_url must be a string`（或 api_key_env），无 traceback |
 | `.env` 中非法 `RS_AGENT_API` | `RS_AGENT_API=grpc` | **EXIT=2**，`配置错误: Unsupported api...` |
 | 端点不可达 | `--base-url https://127.0.0.1:9` | **EXIT=1**，`API request failed: [WinError 10061] ...` |
 | 非法 key（401） | `--api-key sk-fake-invalid` | **EXIT=1**，HTTP 401 + API JSON 错误体；服务端对 key 脱敏 |
@@ -243,23 +260,23 @@ uv run python -m rs_agent chat --profile localresp --profiles-file v6verify/prof
 | 读流中途 socket 异常 / 纯文本截断 | 注入 `ConnectionResetError` / `--max-tokens 8` | **LLMError: stream interrupted** / stdout 追加“回答可能被截断”提示（R1/R2，v3 修复） |
 | `.env` BOM/行内注释 | 临时 `.env`（BOM + ` # comment`） | 正确解析（R4，v5 修复） |
 
-对 v7 全部错误路径捕获文件做 traceback 扫描：0 个含 `Traceback`（历史 v1 取证文件除外）。
+对 v10 全部错误路径捕获文件做 traceback 扫描：0 个含 `Traceback`（历史 v1 取证文件除外）。
 
 ## 6. verifier 新增测试：`tests/test_cli_smoke.py`
 
 该文件由 verifier 新增（7 个用例，不依赖真实网络）。v6 中 Lead 将“缺 key”用例补充 `--no-profile`，以隔离仓库本地 `.rs_agent_profiles.json` 的影响、保持确定性。覆盖点：`chat` 子命令与参数解析、`--api` 非法值、无 key 退出码 1、`--help` 选项；子进程用例使用 `sys.executable -m rs_agent`、清理 key 环境变量、UTF-8 捕获输出。
 
-## 7. 遗留问题清单（v7 最终状态）
+## 7. 遗留问题清单（v10 最终状态）
 
 | 编号 | 严重级别 | 问题 | 修复 / 证据 | 状态 |
 | --- | --- | --- | --- | --- |
-| R1 | ~~低~~ 已修复（v3） | 读流阶段 socket 异常未包装成 `LLMError`，CLI 会打栈 | v3 捕获 `urllib.error.URLError`/`OSError` → `LLMError("stream interrupted: ...")`；v7 全量测试仍通过（`test_read_errors_are_wrapped_as_llm_error`） | **已修复** |
-| R2 | ~~低~~ 已修复（v3） | 纯文本生成被截断时无提示 | v3 在 stdout/assistant 消息追加截断提示；v7 全量测试仍通过（`test_truncated_text_without_tool_calls_gets_notice`） | **已修复** |
+| R1 | ~~低~~ 已修复（v3） | 读流阶段 socket 异常未包装成 `LLMError`，CLI 会打栈 | v3 捕获 `urllib.error.URLError`/`OSError` → `LLMError("stream interrupted: ...")`；v10 全量测试仍通过（`test_read_errors_are_wrapped_as_llm_error`） | **已修复** |
+| R2 | ~~低~~ 已修复（v3） | 纯文本生成被截断时无提示 | v3 在 stdout/assistant 消息追加截断提示；v10 全量测试仍通过（`test_truncated_text_without_tool_calls_gets_notice`） | **已修复** |
 | R3 | 信息 | 无重试/退避/断线续传；`timeout` 固定 120s 且未暴露 CLI 参数；`--max-tokens` 负数、`--temperature` 越界未本地校验（API 返回可读 400） | `docs/minimal-harness-mvp.md` 明确列为刻意不做的范围 | 保留（信息项） |
-| R4 | ~~信息~~ 已修复（v5） | `.env` 的 UTF-8 BOM 与行内注释解析边界 | v5 改为 `utf-8-sig` + 未加引号值按 ` #` 截断；v7 全量测试仍通过（`test_load_env_file_handles_bom_and_inline_comments`） | **已修复** |
+| R4 | ~~信息~~ 已修复（v5） | `.env` 的 UTF-8 BOM 与行内注释解析边界 | v5 改为 `utf-8-sig` + 未加引号值按 ` #` 截断；v10 全量测试仍通过（`test_load_env_file_handles_bom_and_inline_comments`） | **已修复** |
 | R5 | ~~低~~ 已修复（v7） | v6 中 `--no-profile` 在**交互菜单**路径被忽略：菜单仍显示「① 配置档案」且可选中档案（横幅变为该档案），与 README/help“忽略所有档案”矛盾；EOF/临时配置选择还会把持久化的 `last_profile` 清空 | v7 修复：`--no-profile` 时菜单分支传 `store=None`（无「① 配置档案」）、`profile_name` 强制 None、菜单后不 `store.set_last`；`--profile`/`--no-profile` 改为 argparse 互斥。复验：菜单首项为「① 接口协议」、横幅 `profile=(none)`、store 的 SHA-256 与 last 前后未变；两 flag 同用 exit 2 可读；新增 3 个测试锁定 | **已修复** |
 
-v7 已无低严重度以上遗留项；R1/R2（v3）、R4（v5）、R5（v7）修复后各有回归测试锁定，仅 R3 作为信息项保留（文档声明的刻意范围），不影响 MVP 交付。v8 为低风险维护改动（`getdata` 弃用替换 + 回归测试），**不新增遗留项**，harness 行为不变。v9 为 PR #8 Codex review 的 P1/P2 修复，**不新增遗留项**（已修复并有 3 个回归测试锁定），R1–R5 状态不变。
+v7 已无低严重度以上遗留项；R1/R2（v3）、R4（v5）、R5（v7）修复后各有回归测试锁定，仅 R3 作为信息项保留（文档声明的刻意范围），不影响 MVP 交付。v8 为低风险维护改动（`getdata` 弃用替换 + 回归测试），**不新增遗留项**，harness 行为不变。v9 为 PR #8 Codex review 的 P1/P2 修复，**不新增遗留项**（已修复并有 3 个回归测试锁定），R1–R5 状态不变。v10 为 PR #8 第二轮 Codex P2#3/P2#4 修复，**不新增遗留项**（已修复并有 4 个回归测试锁定），R1–R5 状态不变。
 
 ## 8. 与项目文档的一致性
 
@@ -272,7 +289,7 @@ v7 已无低严重度以上遗留项；R1/R2（v3）、R4（v5）、R5（v7）�
 
 - verifier 本轮只修改 `docs/harness-verification.md`，未改 `src/` 与 `tests/`；
 - 仓库本地 `.env`（真实 key）与 `.rs_agent_profiles.json`：验收前后 SHA-256 未变（未被修改/提交）；验收中仅只读使用仓库档案文件；
-- 测试档案写在仓库内临时目录（v6 为 `v6verify/`、v7 为 `v7verify/`、v9 为 `v9verify/`；因本机 Python 子进程不可写 `%TEMP%` 根目录），验收后删除；其中 JSON **不含明文 key**；所有捕获输出与 JSON 的“真实 key 子串”扫描结果为空；
+- 测试档案写在仓库内临时目录（v6 为 `v6verify/`、v7 为 `v7verify/`、v9 为 `v9verify/`、v10 为 `v10verify/`；因本机 Python 子进程不可写 `%TEMP%` 根目录），验收后删除；其中 JSON **不含明文 key**；所有捕获输出与 JSON 的“真实 key 子串”扫描结果为空；
 - 横幅、`/config`、`/profiles` 一律脱敏为 `sk-****`；`/save` 只写 `api_key_env`；
 - `.env` 与 `.rs_agent_profiles.json` 均在 `.gitignore` 中；`git diff --check` 通过。
 
@@ -316,8 +333,17 @@ uv run python -m rs_agent chat --profile localresp --profiles-file v7verify/prof
 # v9 P2：last=respp 时菜单选「临时配置」，协议/模型/思考默认应来自 .env（chat/flash/disabled）
 "1`n`n`n`n用一句话说说 examples/sample.ppm 的尺寸`n/exit`n" |
   uv run python -m rs_agent chat --profiles-file v9verify/profiles.json
+
+# v10 P2#3：last_profile 的 api_key_env 不存在时，菜单仍应出现；--no-menu 则 exit 2 可读
+# （profiles：broken.api_key_env=MISSING_BROKEN_KEY 且 last_profile=broken）
+"1`n`n`n`n用一句话说说 examples/sample.ppm 的尺寸`n/exit`n" |
+  uv run python -m rs_agent chat --profiles-file v10verify/stale.json
+$null | uv run python -m rs_agent chat --no-menu --profiles-file v10verify/stale.json
+
+# v10 P2#4：非字符串字段 JSON -> exit 2 可读（base_url: 1 / api_key_env: 3）
+uv run python -m rs_agent chat --no-menu --profiles-file v10verify/badtype.json "hi"
 ```
 
 ## 11. 最终结论
 
-**通过（PASS），无阻塞项。** v9 基线（commit `c585cb6`，PR #8）**104/104 测试通过**：PR #8 的 Codex review P1（菜单答案污染 `/use` 配置）与 P2（选「临时配置」后默认值仍来自旧档案）均已修复，独立真实 CLI 复验通过——`/use` 后横幅/真实调用使用新档案的协议、模型、思考强度；真实 CLI flag 仍优先；菜单选临时配置时默认值来自 `.env` 而非旧档案。配置档案、双向言工具循环、`.env`、错误路径等 v7/v8 验收结论继续有效；R1/R2/R4/R5 保持已修复，仅 R3（无重试/超时不可配）作为信息项保留，属文档声明的刻意范围，不影响交付。
+**通过（PASS），无阻塞项。** v10 基线（commit `d5b9eb3`，PR #8 第二轮 review）**108/108 测试通过**：Codex 提出的 **P2#3**（stale `last_profile` key 使启动在菜单前失败、用户无法切档）与 **P2#4**（档案字段类型错误抛未捕获 `TypeError`/`AttributeError`）均已修复，独立真实 CLI 复验通过——stale key 时菜单正常出现并可切到临时配置/成功调用，`--no-menu` 保持可读 exit 2；非字符串档案字段统一 `ProfileError` + CLI exit 2、无栈。配置档案、双向言工具循环、`.env`、错误路径等 v7–v9 验收结论继续有效；R1/R2/R4/R5 保持已修复，仅 R3（无重试/超时不可配）作为信息项保留，属文档声明的刻意范围，不影响交付。
