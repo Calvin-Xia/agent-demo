@@ -358,6 +358,57 @@ def test_use_keeps_true_cli_flags_authoritative(tmp_path, monkeypatch):
     assert state.config.model == "remote-model"  # profile supplies the rest
 
 
+def test_stale_profile_key_does_not_block_interactive_menu(
+    tmp_path, monkeypatch, capsys
+):
+    profile = Profile(name="broken", api_key_env="MISSING_PROFILE_KEY")
+    profiles_file = _write_store(tmp_path, profile)
+    env_file = _write_env(tmp_path)
+    monkeypatch.delenv("MISSING_PROFILE_KEY", raising=False)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("1\n\n\n"))
+
+    exit_code = main(
+        [
+            "chat",
+            "--profiles-file",
+            profiles_file,
+            "--env-file",
+            env_file,
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "① 配置档案" in captured.err
+    assert "profile=(none)" in captured.err
+
+
+def test_stale_profile_key_without_menu_is_readable_error(
+    tmp_path, monkeypatch, capsys
+):
+    profile = Profile(name="broken", api_key_env="MISSING_PROFILE_KEY")
+    profiles_file = _write_store(tmp_path, profile)
+    env_file = _write_env(tmp_path)
+    monkeypatch.delenv("MISSING_PROFILE_KEY", raising=False)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+
+    exit_code = main(
+        [
+            "chat",
+            "--no-menu",
+            "--profiles-file",
+            profiles_file,
+            "--env-file",
+            env_file,
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "MISSING_PROFILE_KEY" in captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_no_profile_ignores_menu_profile_selection(
     tmp_path, monkeypatch, capsys
 ):

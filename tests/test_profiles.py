@@ -125,6 +125,31 @@ def test_store_rejects_unknown_profile_fields(tmp_path):
         ProfileStore(path)
 
 
+def test_store_rejects_non_string_profile_fields(tmp_path):
+    path = tmp_path / "profiles.json"
+
+    path.write_text(
+        json.dumps({"version": 1, "profiles": {"x": {"base_url": 1}}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ProfileError, match="base_url must be a string"):
+        ProfileStore(path)
+
+    path.write_text(
+        json.dumps({"version": 1, "profiles": {"x": {"api_key_env": 3}}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ProfileError, match="api_key_env must be a string"):
+        ProfileStore(path)
+
+
+def test_profile_rejects_non_string_fields_directly():
+    with pytest.raises(ProfileError, match="api_key_env must be a string"):
+        Profile(name="ok", api_key_env=3)  # type: ignore[arg-type]
+    with pytest.raises(ProfileError, match="reasoning_effort must be a string"):
+        Profile(name="ok", reasoning_effort=1)  # type: ignore[arg-type]
+
+
 def test_save_uses_sibling_temp_file_and_cleans_up(tmp_path):
     path = tmp_path / "profiles.json"
     store = ProfileStore(path)

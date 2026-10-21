@@ -188,8 +188,17 @@ def build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------
 
 
-def _profile_api_key(profile: Profile | None, args: argparse.Namespace) -> str | None:
-    """Resolve a profile's key from env/``.env``; literal keys are supported."""
+def _profile_api_key(
+    profile: Profile | None,
+    args: argparse.Namespace,
+    *,
+    required: bool = True,
+) -> str | None:
+    """Resolve a profile's key from env/``.env``; literal keys are supported.
+
+    ``required=False`` is used while collecting menu defaults, where the key is
+    not needed yet: a stale ``last_profile`` must not block the profile picker.
+    """
     if profile is None:
         return None
     if profile.api_key:
@@ -199,6 +208,8 @@ def _profile_api_key(profile: Profile | None, args: argparse.Namespace) -> str |
         if not value:
             value = load_env_file(args.env_file).get(profile.api_key_env)
         if not value:
+            if not required:
+                return None
             raise ValueError(
                 f"档案 {profile.name!r} 需要环境变量或 .env 中的 "
                 f"{profile.api_key_env}，当前没有找到"
@@ -208,7 +219,10 @@ def _profile_api_key(profile: Profile | None, args: argparse.Namespace) -> str |
 
 
 def _build_config(
-    args: argparse.Namespace, profile: Profile | None = None
+    args: argparse.Namespace,
+    profile: Profile | None = None,
+    *,
+    require_profile_key: bool = True,
 ) -> LLMConfig:
     """Resolve the effective config: flags > profile > env/.env > defaults."""
     base_url = args.base_url or (profile.base_url if profile else None)
@@ -224,7 +238,9 @@ def _build_config(
         if args.reasoning_effort is not None
         else (profile.reasoning_effort if profile else None)
     )
-    api_key = args.api_key or _profile_api_key(profile, args)
+    api_key = args.api_key or _profile_api_key(
+        profile, args, required=require_profile_key
+    )
     return resolve_config(
         base_url=base_url,
         api_key=api_key,
@@ -639,27 +655,33 @@ def _run_chat(args: argparse.Namespace) -> int:
         elif store.last_profile:
             profile_name = store.last_profile
 
+    one_shot = " ".join(args.prompt).strip()
+    show_menu = not one_shot and not args.no_menu
+
     try:
         profile = store.get(profile_name) if profile_name else None
-        config = _build_config(args, profile)
+        # When the profile picker will run, a stale key reference must not block
+        # it: menu defaults do not need the credential, so resolve tolerantly.
+        config = _build_config(args, profile, require_profile_key=not show_menu)
     except (ValueError, ProfileError) as exc:
         print(f"配置错误: {exc}", file=sys.stderr)
         return 2
 
-    one_shot = " ".join(args.prompt).strip()
     cli_overrides: dict[str, str | None] = {
         "api": args.api,
         "model": args.model,
         "thinking": args.thinking,
         "reasoning_effort": args.reasoning_effort,
     }
-    if not one_shot and not args.no_menu:
+    if show_menu:
         try:
             selection = _interactive_menu(
                 config,
                 store=None if args.no_profile else store,
                 active_name=None if args.no_profile else profile_name,
-                build_config=lambda chosen: _build_config(args, chosen),
+                build_config=lambda chosen: _build_config(
+                    args, chosen, require_profile_key=False
+                ),
             )
         except KeyboardInterrupt:
             print(file=sys.stderr)

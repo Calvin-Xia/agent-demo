@@ -47,11 +47,25 @@ class Profile:
     api_key: str | None = None
 
     def __post_init__(self) -> None:
-        if not _NAME_RE.match(self.name or ""):
+        if not isinstance(self.name, str) or not _NAME_RE.match(self.name):
             raise ProfileError(
                 "profile name must be 1-64 chars of letters, digits, '.', '_' or '-'"
             )
-        if self.base_url is not None and not str(self.base_url).strip():
+        for field_name in (
+            "base_url",
+            "model",
+            "api",
+            "thinking",
+            "reasoning_effort",
+            "api_key_env",
+            "api_key",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, str):
+                raise ProfileError(
+                    f"profile {self.name!r}: {field_name} must be a string"
+                )
+        if self.base_url is not None and not self.base_url.strip():
             raise ProfileError(f"profile {self.name!r}: base_url must not be empty")
         if self.api is not None and self.api not in _VALID_APIS:
             raise ProfileError(
