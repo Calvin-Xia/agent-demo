@@ -5,7 +5,11 @@ codex-minimal-image-agent-demo-fix.md
 .venv/
 .uv_cache/
 
+# Local secrets (copy .env.example to .env and fill in your key)
+.env
+
 # Python bytecode and tool caches
+pytest-of-*/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -26,3 +30,6 @@ dist/
 *.png
 *.tif
 *.TIF
+
+# local named configuration profiles
+.rs_agent_profiles.json*
