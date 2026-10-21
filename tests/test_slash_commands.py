@@ -14,7 +14,7 @@ from rs_agent.__main__ import (
 )
 from rs_agent.harness import Harness
 from rs_agent.llm import LLMClient, LLMConfig
-from rs_agent.profiles import Profile, ProfileStore
+from rs_agent.profiles import Profile, ProfileError, ProfileStore
 
 
 def _parse(tmp_path, *extra: str):
@@ -356,6 +356,58 @@ def test_use_keeps_true_cli_flags_authoritative(tmp_path, monkeypatch):
 
     assert state.config.api == "chat"  # explicit CLI flag still wins
     assert state.config.model == "remote-model"  # profile supplies the rest
+
+
+def test_save_with_cli_key_does_not_pin_unrelated_env(tmp_path, monkeypatch):
+    stderr = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stderr)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-env-different")
+    state = _state(tmp_path)
+    state.args.api_key = "sk-cli-value"
+
+    _handle_slash("/save cli", state)
+
+    saved = state.store.get("cli")
+    assert saved is not None
+    assert saved.api_key_env is None
+    assert "不会自动记录环境变量" in stderr.getvalue()
+
+    _handle_slash("/save cli2 EXPLICIT_KEY", state)
+    assert state.store.get("cli2").api_key_env == "EXPLICIT_KEY"
+
+
+def test_last_profile_write_failure_is_nonfatal(
+    tmp_path, monkeypatch, capsys
+):
+    profile = Profile(
+        name="local",
+        model="deepseek-flash",
+        api="chat",
+        api_key_env="DEEPSEEK_API_KEY",
+    )
+    profiles_file = _write_store(tmp_path, profile)
+    env_file = _write_env(tmp_path)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("\n\n\n"))
+
+    def _boom(self, name):
+        raise ProfileError("disk full")
+
+    monkeypatch.setattr(ProfileStore, "set_last", _boom)
+
+    exit_code = main(
+        [
+            "chat",
+            "--profiles-file",
+            profiles_file,
+            "--env-file",
+            env_file,
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "无法保存 last_profile" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_stale_profile_key_does_not_block_interactive_menu(

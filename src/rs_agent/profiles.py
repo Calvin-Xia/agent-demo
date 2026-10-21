@@ -156,6 +156,10 @@ class ProfileStore:
             raw = json.loads(self.path.read_text(encoding="utf-8-sig"))
         except OSError as exc:
             raise ProfileError(f"cannot read profile store {self.path}: {exc}") from exc
+        except UnicodeDecodeError as exc:
+            raise ProfileError(
+                f"profile store {self.path} is not valid UTF-8: {exc}"
+            ) from exc
         except json.JSONDecodeError as exc:
             raise ProfileError(f"profile store {self.path} is not valid JSON: {exc}") from exc
         if not isinstance(raw, Mapping):

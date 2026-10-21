@@ -143,6 +143,14 @@ def test_store_rejects_non_string_profile_fields(tmp_path):
         ProfileStore(path)
 
 
+def test_store_rejects_non_utf8_file(tmp_path):
+    path = tmp_path / "profiles.json"
+    path.write_bytes(b'\xff\xfe\x00{"version": 1, "profiles": {}}')
+
+    with pytest.raises(ProfileError, match="not valid UTF-8"):
+        ProfileStore(path)
+
+
 def test_profile_rejects_non_string_fields_directly():
     with pytest.raises(ProfileError, match="api_key_env must be a string"):
         Profile(name="ok", api_key_env=3)  # type: ignore[arg-type]

@@ -285,6 +285,14 @@ def _key_source(args: argparse.Namespace, profile: Profile | None = None) -> str
     return "未配置"
 
 
+def _persist_last_profile(store: ProfileStore, name: str | None) -> None:
+    """Remember the last-used profile without making a write failure fatal."""
+    try:
+        store.set_last(name)
+    except ProfileError as exc:
+        print(f"警告: 无法保存 last_profile: {exc}", file=sys.stderr)
+
+
 def _print_banner(
     config: LLMConfig,
     args: argparse.Namespace,
@@ -543,18 +551,26 @@ def _handle_slash(line: str, state: ChatState) -> bool:
             print(f"档案不存在: {argument}（可用 /profiles 查看）", file=sys.stderr)
             return True
         _rebuild_session(state, argument)
-        state.store.set_last(argument)
+        _persist_last_profile(state.store, argument)
         print(f"已切换到档案 {argument}。", file=sys.stderr)
     elif command == "/save":
         if not argument:
             print("用法: /save <name> [ENV_VAR_NAME]", file=sys.stderr)
             return True
         env_override = parts[2] if len(parts) > 2 else None
-        api_key_env = env_override or _detect_api_key_env(state.args, state.profile)
+        if env_override:
+            api_key_env = env_override
+        elif state.args.api_key:
+            # The effective key is a literal CLI value; do not pin an unrelated
+            # environment variable that merely happens to be set.
+            api_key_env = None
+        else:
+            api_key_env = _detect_api_key_env(state.args, state.profile)
         if state.args.api_key and not env_override:
             print(
-                "提示: 本次 key 来自 --api-key 命令行参数，档案不会保存明文 key；"
-                "请把 key 放进 .env 并用 ENV 参数指定变量名，或直接使用环境变量名。",
+                "提示: 本次 key 来自 --api-key 命令行参数，档案不会保存明文 key，"
+                "也不会自动记录环境变量；如该 key 已在某个环境变量中，"
+                "请用 /save <name> <ENV_VAR> 显式指定。",
                 file=sys.stderr,
             )
         try:
@@ -566,7 +582,7 @@ def _handle_slash(line: str, state: ChatState) -> bool:
             return True
         state.store.upsert(profile)
         state.profile_name = argument
-        state.store.set_last(argument)
+        _persist_last_profile(state.store, argument)
         key_note = f"key 引用 {api_key_env}" if api_key_env else "未记录 key 引用"
         print(
             f"已保存档案 {argument}（{key_note}）。之后可用 /use {argument} 或 "
@@ -701,10 +717,10 @@ def _run_chat(args: argparse.Namespace) -> int:
             print(f"配置错误: {exc}", file=sys.stderr)
             return 2
         if not args.no_profile:
-            store.set_last(profile_name)
+            _persist_last_profile(store, profile_name)
 
     if args.profile and not args.no_profile:
-        store.set_last(profile_name)
+        _persist_last_profile(store, profile_name)
 
     _print_banner(config, args, profile)
     harness = Harness(
