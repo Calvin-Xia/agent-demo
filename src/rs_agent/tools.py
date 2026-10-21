@@ -319,5 +319,5 @@ def _band_mean(band_image: Image.Image) -> int | float:
     """Return the exact per-pixel mean, preserving the source bit depth."""
     if band_image.mode in _HIGH_BIT_DEPTH_MODES:
         width, height = band_image.size
-        return sum(band_image.getdata()) / (width * height)
+        return sum(band_image.get_flattened_data()) / (width * height)
     return ImageStat.Stat(band_image).mean[0]

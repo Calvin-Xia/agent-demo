@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 import pytest
@@ -66,6 +67,27 @@ def test_inspect_image_preserves_16bit_mean(tmp_path: Path) -> None:
     result = inspect_image(image_path)
 
     assert result["statistics"] == {"I": {"min": 0, "max": 65535, "mean": 32767.5}}
+
+
+def test_inspect_image_preserves_16bit_mean_without_deprecation_warning(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "sixteen-bit-warning.png"
+    with Image.new("I;16", (2, 1)) as image:
+        image.putdata([0, 65535])
+        image.save(image_path)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = inspect_image(image_path)
+
+    assert result["statistics"] == {"I": {"min": 0, "max": 65535, "mean": 32767.5}}
+    deprecations = [
+        warning
+        for warning in caught
+        if issubclass(warning.category, DeprecationWarning)
+    ]
+    assert deprecations == []
 
 
 def test_inspect_image_rejects_decompression_bomb(
