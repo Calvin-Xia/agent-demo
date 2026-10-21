@@ -558,17 +558,20 @@ def _handle_slash(line: str, state: ChatState) -> bool:
             print("用法: /save <name> [ENV_VAR_NAME]", file=sys.stderr)
             return True
         env_override = parts[2] if len(parts) > 2 else None
+        literal_key = state.args.api_key or (
+            state.profile is not None and state.profile.api_key
+        )
         if env_override:
             api_key_env = env_override
-        elif state.args.api_key:
-            # The effective key is a literal CLI value; do not pin an unrelated
-            # environment variable that merely happens to be set.
+        elif literal_key:
+            # The effective key is a literal CLI/profile value; do not pin an
+            # unrelated environment variable that merely happens to be set.
             api_key_env = None
         else:
             api_key_env = _detect_api_key_env(state.args, state.profile)
-        if state.args.api_key and not env_override:
+        if literal_key and not env_override:
             print(
-                "提示: 本次 key 来自 --api-key 命令行参数，档案不会保存明文 key，"
+                "提示: 本次 key 来自 --api-key 或档案中的明文字段，档案不会保存明文 key，"
                 "也不会自动记录环境变量；如该 key 已在某个环境变量中，"
                 "请用 /save <name> <ENV_VAR> 显式指定。",
                 file=sys.stderr,

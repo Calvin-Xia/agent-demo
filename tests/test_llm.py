@@ -420,6 +420,22 @@ def test_chat_fatal_finish_reason_raises():
         list(parse_chat_stream(lines))
 
 
+def test_chat_aborted_finish_reason_raises():
+    lines = _chat_chunks(
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": "partial answer"},
+                    "finish_reason": "aborted",
+                }
+            ]
+        }
+    )
+    with pytest.raises(LLMError, match="aborted"):
+        list(parse_chat_stream(lines))
+
+
 def test_responses_stream_without_terminal_event_raises():
     lines = _responses_lines(
         (

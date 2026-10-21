@@ -168,6 +168,32 @@ def test_save_uses_sibling_temp_file_and_cleans_up(tmp_path):
     assert list(tmp_path.glob("profiles.json.*.tmp")) == []
 
 
+def test_mutations_roll_back_when_persistence_fails(tmp_path, monkeypatch):
+    path = tmp_path / "profiles.json"
+    store = ProfileStore(path)
+    store.upsert(Profile(name="keep", model="m"))
+    store.set_last("keep")
+
+    def _boom():
+        raise ProfileError("disk full")
+
+    monkeypatch.setattr(store, "save", _boom)
+
+    with pytest.raises(ProfileError, match="disk full"):
+        store.upsert(Profile(name="new"))
+    assert store.get("new") is None
+    assert store.get("keep") is not None
+
+    with pytest.raises(ProfileError, match="disk full"):
+        store.delete("keep")
+    assert store.get("keep") is not None
+    assert store.last_profile == "keep"
+
+    with pytest.raises(ProfileError, match="disk full"):
+        store.set_last(None)
+    assert store.last_profile == "keep"
+
+
 def test_save_reports_unwritable_path(tmp_path, monkeypatch):
     store = ProfileStore(tmp_path / "profiles.json")
 

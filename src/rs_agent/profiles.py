@@ -222,21 +222,41 @@ class ProfileStore:
         return self.profiles.get(name)
 
     def upsert(self, profile: Profile) -> None:
+        previous = self.profiles.get(profile.name)
         self.profiles[profile.name] = profile
-        self.save()
+        try:
+            self.save()
+        except ProfileError:
+            # Never expose a profile whose persistence failed.
+            if previous is None:
+                self.profiles.pop(profile.name, None)
+            else:
+                self.profiles[profile.name] = previous
+            raise
 
     def delete(self, name: str) -> bool:
         if name not in self.profiles:
             return False
-        del self.profiles[name]
+        removed = self.profiles.pop(name)
+        previous_last = self.last_profile
         if self.last_profile == name:
             self.last_profile = None
-        self.save()
+        try:
+            self.save()
+        except ProfileError:
+            self.profiles[name] = removed
+            self.last_profile = previous_last
+            raise
         return True
 
     def set_last(self, name: str | None) -> None:
         if name is not None and name not in self.profiles:
             name = None
         if self.last_profile != name:
+            previous_last = self.last_profile
             self.last_profile = name
-            self.save()
+            try:
+                self.save()
+            except ProfileError:
+                self.last_profile = previous_last
+                raise

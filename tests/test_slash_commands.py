@@ -376,6 +376,34 @@ def test_save_with_cli_key_does_not_pin_unrelated_env(tmp_path, monkeypatch):
     assert state.store.get("cli2").api_key_env == "EXPLICIT_KEY"
 
 
+def test_save_with_literal_profile_key_does_not_pin_env(
+    tmp_path, monkeypatch
+):
+    stderr = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stderr)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-unrelated-env")
+    state = _state(tmp_path)
+    state.store.upsert(
+        Profile(
+            name="literal",
+            model="m",
+            api="chat",
+            api_key="sk-literal-profile-key",
+        )
+    )
+    state.profile_name = "literal"
+    state.config = LLMConfig(
+        api_key="sk-literal-profile-key", model="m", api="chat"
+    )
+
+    _handle_slash("/save literal-copy", state)
+
+    saved = state.store.get("literal-copy")
+    assert saved is not None
+    assert saved.api_key_env is None
+    assert "不会自动记录环境变量" in stderr.getvalue()
+
+
 def test_last_profile_write_failure_is_nonfatal(
     tmp_path, monkeypatch, capsys
 ):

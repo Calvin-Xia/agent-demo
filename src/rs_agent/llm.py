@@ -29,7 +29,11 @@ SUPPORTED_APIS = ("chat", "responses")
 _ENV_PREFIX = "RS_AGENT_"
 
 # Chat finish reasons that mean the model did not complete a usable answer.
-_FATAL_CHAT_FINISH_REASONS = {"content_filter", "insufficient_system_resource"}
+_FATAL_CHAT_FINISH_REASONS = {
+    "content_filter",
+    "insufficient_system_resource",
+    "aborted",
+}
 
 
 class LLMError(RuntimeError):
